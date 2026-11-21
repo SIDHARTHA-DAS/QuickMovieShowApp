@@ -23,6 +23,7 @@ import { normalizeMovie } from '../utils/movieAdapter';
 import { useAuth } from '../context/AuthContext';
 import SectionHeader from '../components/SectionHeader';
 import MovieCard from '../components/MovieCard';
+import CinemaFooter from '../components/CinemaFooter';
 
 const HERO_FALLBACK_URI =
   'https://image.tmdb.org/t/p/w1280/r2J02Z2OpNTctfOSN1Ydgii51I3.jpg';
@@ -129,6 +130,14 @@ export default function HomeScreen({ navigation }) {
 
   const goToAllMovies = () => {
     navigation.navigate('Movies', { screen: 'MoviesList' });
+  };
+
+  const goToBookings = () => {
+    navigation.navigate('MyBookings');
+  };
+
+  const goToTheaters = () => {
+    navigation.navigate('Theaters');
   };
 
   const handleSelectTrailer = (item) => {
@@ -369,20 +378,12 @@ export default function HomeScreen({ navigation }) {
           </ScrollView>
         </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.brandText}>
-            <Text style={styles.brandAccent}>Quick</Text>Show
-          </Text>
-          <Text style={styles.footerDesc}>
-            Step into a world where stories come alive. Discover endless
-            entertainment with the latest movies, timeless classics, and
-            exclusive content—all in one place.
-          </Text>
-          <Text style={styles.copyright}>
-            Copyright 2026. All Right Reserved. ©Sidharth
-          </Text>
-        </View>
+        {/* Upgraded Cinema Footer */}
+        <CinemaFooter
+          onExploreMovies={goToAllMovies}
+          onOpenBookings={goToBookings}
+          onOpenTheaters={goToTheaters}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -397,7 +398,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 96,
+    paddingBottom: 104,
   },
   topBar: {
     flexDirection: 'row',
@@ -651,24 +652,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(9, 5, 8, 0.82)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  footer: {
-    marginTop: 30,
-    paddingTop: 22,
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.cardBorder,
-  },
-  footerDesc: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
-  },
-  copyright: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-    marginTop: 14,
-    textAlign: 'center',
   },
 });
