@@ -1,0 +1,18 @@
+export const COLORS = {
+  bg: '#090508',
+  surface: '#110A0E',
+  card: '#141923',
+  cardBorder: '#232B3A',
+  roseCard: '#1D0C14',
+  roseBorder: '#3A1424',
+  primary: '#F43F5E',
+  primaryDark: '#E11D48',
+  text: '#FFFFFF',
+  textSecondary: '#B8B8C2',
+  textMuted: '#7C7C8A',
+  gold: '#F59E0B',
+  success: '#10B981',
+  danger: '#EF4444',
+  white: '#FFFFFF',
+  black: '#000000',
+};
