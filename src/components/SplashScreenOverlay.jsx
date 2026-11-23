@@ -43,13 +43,13 @@ export default function SplashScreenOverlay({ onFinish }) {
         Animated.parallel([
           Animated.timing(glowScale, {
             toValue: 1.25,
-            duration: 900,
+            duration: 950,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
           Animated.timing(glowOpacity, {
             toValue: 0.45,
-            duration: 900,
+            duration: 950,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
@@ -57,13 +57,13 @@ export default function SplashScreenOverlay({ onFinish }) {
         Animated.parallel([
           Animated.timing(glowScale, {
             toValue: 0.85,
-            duration: 900,
+            duration: 950,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
           Animated.timing(glowOpacity, {
             toValue: 0.2,
-            duration: 900,
+            duration: 950,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
@@ -75,13 +75,13 @@ export default function SplashScreenOverlay({ onFinish }) {
       Animated.sequence([
         Animated.timing(pulseOpacity, {
           toValue: 1,
-          duration: 550,
+          duration: 600,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(pulseOpacity, {
           toValue: 0.35,
-          duration: 550,
+          duration: 600,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
@@ -92,7 +92,7 @@ export default function SplashScreenOverlay({ onFinish }) {
     statusLoop.start();
 
     const mainSequence = Animated.sequence([
-      Animated.delay(150),
+      Animated.delay(200),
       Animated.parallel([
         Animated.spring(badgeScale, {
           toValue: 1,
@@ -102,7 +102,7 @@ export default function SplashScreenOverlay({ onFinish }) {
         }),
         Animated.timing(badgeOpacity, {
           toValue: 1,
-          duration: 420,
+          duration: 450,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
@@ -110,13 +110,13 @@ export default function SplashScreenOverlay({ onFinish }) {
       Animated.parallel([
         Animated.timing(nameOpacity, {
           toValue: 1,
-          duration: 420,
+          duration: 450,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(nameTranslateY, {
           toValue: 0,
-          duration: 420,
+          duration: 450,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
@@ -124,28 +124,28 @@ export default function SplashScreenOverlay({ onFinish }) {
       Animated.parallel([
         Animated.timing(subOpacity, {
           toValue: 1,
-          duration: 360,
+          duration: 380,
           easing: Easing.out(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(subTranslateY, {
           toValue: 0,
-          duration: 360,
+          duration: 380,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]),
-      Animated.delay(750),
+      Animated.delay(1450),
       Animated.parallel([
         Animated.timing(screenOpacity, {
           toValue: 0,
-          duration: 460,
+          duration: 480,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(screenScale, {
           toValue: 1.05,
-          duration: 460,
+          duration: 480,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
@@ -162,7 +162,7 @@ export default function SplashScreenOverlay({ onFinish }) {
       auraLoop.stop();
       statusLoop.stop();
       finish();
-    }, 3400);
+    }, 4300);
 
     return () => {
       auraLoop.stop();

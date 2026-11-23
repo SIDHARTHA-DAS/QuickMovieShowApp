@@ -30,6 +30,7 @@ export default function MovieCard({ movie, onPress, style }) {
         </Text>
 
         <View style={styles.footerRow}>
+          {/* buy ticket button */}
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={onPress}

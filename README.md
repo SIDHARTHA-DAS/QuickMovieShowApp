@@ -1,72 +1,100 @@
-# QuickShow — Movie Ticket Booking Mobile App
+<div align="center">
 
-A modern, dark-themed movie booking mobile application built with **React Native** and **Expo**, featuring dynamic show listings with resilient fallbacks, click-to-play trailer previews, interactive seat selection, a simulated UPI & Stripe-style card checkout flow with vibration feedback, and instant ticket tracking in **My Bookings**.
+# 🎬 QuickShow — Movie Ticket Booking Mobile App
 
----
+**A modern, cinema-grade movie ticket booking mobile application built with React Native & Expo.**
 
-## Highlights & Engineering Focus
+[![React Native](https://img.shields.io/badge/React_Native-0.88.1-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactnative.dev/)
+[![Expo](https://img.shields.io/badge/Expo-~58.0.26-000020?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev/)
+[![React](https://img.shields.io/badge/React-19.3.0-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
+[![JavaScript](https://img.shields.io/badge/JavaScript-ES2024-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)](https://developer.mozilla.org/)
 
-- **Resilient Data Layer:** Combines live show data (`fetchAllShows`) with reliable fallback datasets (`MOVIES`, `TRAILERS`, and `INITIAL_BOOKINGS`) so core screens stay functional and crash-free even under network issues or empty API responses.
-- **Interactive Checkout & Dual Payment Simulation:** Supports both **UPI** and **Stripe-style Card** flows with input validation, simulated gateway processing, success confirmation with generated transaction IDs, **vibration feedback**, and automatic redirect to **My Bookings**.
-- **Polished Cinema UI & Navigation:** Built with React Navigation (`Bottom Tabs` with a custom sliding pill tab bar + `Native Stack`), `SafeAreaProvider` / `SafeAreaView` inset handling, `expo-linear-gradient`, `@expo/vector-icons`, `react-native-webview` trailer embedding, and a quick-action `CinemaFooter` on the home screen.
+*Discover movies • Watch trailers • Pick seats • Pay via UPI/Card • Manage E-Tickets, Cancellations & 5-Star Ratings*
 
----
-
-## Core Features
-
-### 1. Home Screen, Trailers & Cinema Footer
-- **Hero Showcase & Now Showing Grid:** Highlights the featured film and displays current shows with pull-to-refresh support.
-- **Click-to-Play Trailer Player:** Embeds trailers via `WebView` (`youtube-nocookie.com`), supports switching trailer thumbnails, and offers a direct external YouTube option.
-- **Upgraded `CinemaFooter`:** Provides a clean dark-rose summary card with one-tap shortcuts to **Browse Movies**, **Bookings** (`MyBookings`), and **Theaters**.
-
-### 2. Movie Discovery, Seat Selection & Checkout
-- Inspect show details, select show date/time and seats, and proceed to checkout.
-- **UPI Flow:** Quick app handle helpers (`GPay`, `PhonePe`, `Paytm`), manual UPI ID input, and format validation.
-- **Card (Stripe-Style) Flow:** Email, cardholder name, formatted card number, expiry (`MM/YY`), and CVV validation.
-- **Confirmation & Redirect:** Shows simulated processing and payment success states, triggers vibration feedback, appends the ticket to bookings state, and navigates to **My Bookings**.
-
-### 3. My Bookings & Favorites
-- View confirmed bookings (including newly booked session tickets) alongside favorite/saved movies.
+</div>
 
 ---
 
-## Tech Stack
+## ✨ Overview
 
-| Layer | Technologies Used |
+**QuickShow** brings a sleek, dark-mode multiplex booking experience right to mobile devices. Designed for speed, visual polish, and zero-crash reliability, it combines live backend show data with intelligent local fallbacks so users can browse movies, watch trailers, book seats, cancel tickets with refund tracking, and rate films effortlessly.
+
+---
+
+## 🚀 Key Highlights
+
+| Feature Pillar | What Makes It Stand Out |
 | :--- | :--- |
-| **Core Framework** | React Native (`0.88.1`), React (`19.3.0`), Expo (`~58.0.26`) |
-| **Navigation** | `@react-navigation/native`, `@react-navigation/bottom-tabs`, `@react-navigation/native-stack` |
-| **UI, Icons & Media** | `expo-linear-gradient`, `@expo/vector-icons` (`Ionicons`), `react-native-webview` |
-| **Safe Area & Network** | `react-native-safe-area-context`, `axios` |
+| **🛡️ Resilient Hybrid Data Layer** | Seamlessly merges live show APIs (`fetchAllShows`) with curated fallback datasets (`MOVIES`, `TRAILERS`, `THEATERS`, `INITIAL_BOOKINGS`) for a smooth, crash-free experience even offline. |
+| **💳 Dual Checkout Simulation** | Supports **UPI** (one-tap `GPay`, `PhonePe`, `Paytm` handles + validation) and **Stripe-style Card** payments with processing states, transaction IDs, **haptic/vibration feedback**, and instant redirect to **My Bookings**. |
+| **🎟️ Complete Post-Booking Suite** | View **Digital E-Ticket Passes**, cancel eligible upcoming tickets with **Refund Status Tracking**, and rate watched movies using an interactive **5-Star Rating & Review** modal. |
+| **🎨 Cinema-First UI & Motion** | Custom sliding pill bottom tab bar, `expo-linear-gradient` hero banners, `WebView` trailer player, safe-area inset handling, and a quick-action `CinemaFooter`. |
 
 ---
 
-## Project Structure
+## 📱 Core Features
+
+### 1. 🏠 Home Experience, Trailers & Cinema Footer
+- **Featured Hero Showcase:** Full-bleed gradient movie spotlight with quick booking and favorite actions.
+- **Now Showing & Search Discovery:** Browse trending films with pull-to-refresh, genre/search filtering, and one-tap **Heart (Favorite)** toggles.
+- **Embedded Trailer Player:** Click-to-play trailers powered by `react-native-webview` (`youtube-nocookie.com`) with thumbnail switching and external YouTube launch support.
+- **Quick-Action `CinemaFooter`:** Dark-rose summary card offering instant shortcuts to **Browse Movies**, **My Bookings**, and **Theaters**.
+
+### 2. 💺 Theaters, Seat Selection & Dual Checkout
+- **Theaters & Format Discovery:** Explore nearby cinemas with format badges (`IMAX`, `Dolby Atmos`, `4DX`), amenities, and showtime pills.
+- **Interactive Seat Map:** Choose preferred dates, showtimes, and seats with real-time price calculation.
+- **UPI & Card Payment Flows:**
+  - **UPI:** Quick handle chips (`@okaxis`, `@ybl`, `@paytm`) and UPI ID format validation.
+  - **Card (Stripe-Style):** Formatted card number, expiry (`MM/YY`), CVV, and cardholder validation.
+- **Instant Confirmation:** Generates a unique transaction/booking ID, triggers vibration feedback, updates booking state, and navigates straight to **My Bookings**.
+
+### 3. 🎫 My Bookings, E-Ticket Pass, Cancellation & Ratings
+- **Digital E-Ticket Pass:** Tap any confirmed booking to view a clean boarding/cinema pass with booking ID, theater info, seats, and showtime.
+- **Ticket Cancellation & Refund Tracking:** Cancel upcoming bookings via a confirmation dialog—automatically updating status to **Cancelled** with refund initiation details.
+- **5-Star Movie Ratings:** Rate movies (`1–5 Stars`) and leave quick feedback tags/reviews from movie details or completed bookings.
+- **Saved Watchlist (`Favorites`):** Bookmark movies across screens and manage them anytime inside **Favorites**.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Framework:** React Native (`0.88.1`), React (`19.3.0`), Expo (`~58.0.26`)
+- **Navigation:** `@react-navigation/native`, `@react-navigation/bottom-tabs`, `@react-navigation/native-stack`
+- **UI & Graphics:** `expo-linear-gradient`, `@expo/vector-icons` (`Ionicons`), `react-native-safe-area-context`
+- **Media & Networking:** `react-native-webview`, `axios`
+
+---
+
+## 📂 Project Structure
 
 ```text
 quickshowapp/
-├── App.jsx                         # Root app setup, QuickShowTheme, bookings & favorites state
-├── index.js                        # Expo root component entry
+├── App.jsx                         # Root theme, navigation container & global bookings/ratings/favorites state
+├── index.js                        # Expo application entry point
 ├── package.json                    # Dependencies and Expo scripts
 └── src/
     ├── components/
-    │   ├── CinemaFooter.jsx        # Quick-action cinema footer for HomeScreen
-    │   ├── MovieCard.jsx           # Movie grid card component
-    │   └── SectionHeader.jsx       # Section title & action header
+    │   ├── CinemaFooter.jsx        # Quick-action cinema footer on HomeScreen
+    │   ├── MovieCard.jsx           # Movie card with poster, rating badge & favorite toggle
+    │   └── SectionHeader.jsx       # Reusable section header component
     ├── context/
-    │   └── AuthContext.jsx         # User/guest session context
+    │   └── AuthContext.jsx         # User/guest session, favorites, ratings & booking actions
     ├── data/
-    │   └── mockMovies.js           # Fallback MOVIES, TRAILERS & INITIAL_BOOKINGS
+    │   └── mockMovies.js           # Fallback MOVIES, TRAILERS, THEATERS & INITIAL_BOOKINGS
     ├── navigation/
-    │   ├── MainTabs.jsx            # Custom sliding pill bottom tab bar & tab scenes
-    │   └── MoviesStack.jsx         # Movies stack navigation flow
+    │   ├── MainTabs.jsx            # Custom sliding pill bottom tab bar
+    │   └── MoviesStack.jsx         # Stack flow (Movies → Details → Seats → Checkout)
     ├── screens/
-    │   ├── HomeScreen.jsx          # Hero, Now Showing, WebView trailers & CinemaFooter
-    │   ├── TheatersScreen.jsx      # Theaters listing screen
-    │   └── MyBookingsScreen.jsx    # Booked tickets & favorites screen
+    │   ├── HomeScreen.jsx          # Hero banner, Now Showing, WebView trailers & CinemaFooter
+    │   ├── MoviesScreen.jsx        # Catalog with search, filters & favorites
+    │   ├── MovieDetailsScreen.jsx  # Cast, synopsis, 5-star rating & showtime picker
+    │   ├── SeatSelectionScreen.jsx # Interactive seat map & fare summary
+    │   ├── CheckoutScreen.jsx      # UPI & Card payment simulation with vibration feedback
+    │   ├── TheatersScreen.jsx      # Partner theaters with format tags & showtimes
+    │   └── MyBookingsScreen.jsx    # E-Tickets, cancellations/refunds, ratings & favorites
     ├── services/
-    │   └── api.js                  # Show fetching & booking helpers
+    │   └── api.js                  # Show fetching, booking, cancellation & rating helpers
     ├── theme/
-    │   └── colors.js               # Dark cinema theme palette
+    │   └── colors.js               # Dark cinema color palette
     └── utils/
-        └── movieAdapter.js         # Movie data normalization helper
+        └── movieAdapter.js         # API-to-UI movie data normalization helper

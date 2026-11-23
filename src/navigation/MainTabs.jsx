@@ -17,6 +17,8 @@ import MyBookingsScreen from '../screens/MyBookingsScreen';
 
 const Tab = createBottomTabNavigator();
 
+
+// tab menu list
 const TAB_CONFIG = {
   Home: {
     label: 'Home',
@@ -40,47 +42,8 @@ const TAB_CONFIG = {
   },
 };
 
-function SmoothSceneWrapper({ isFocused, children }) {
-  const opacity = useRef(new Animated.Value(isFocused ? 1 : 0.7)).current;
-  const translateY = useRef(new Animated.Value(isFocused ? 0 : 10)).current;
 
-  useEffect(() => {
-    if (isFocused) {
-      opacity.setValue(0.35);
-      translateY.setValue(12);
-
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 240,
-          useNativeDriver: true,
-        }),
-        Animated.spring(translateY, {
-          toValue: 0,
-          damping: 22,
-          stiffness: 240,
-          mass: 0.85,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [isFocused, opacity, translateY]);
-
-  return (
-    <Animated.View
-      style={[
-        styles.sceneContainer,
-        {
-          opacity,
-          transform: [{ translateY }],
-        },
-      ]}
-    >
-      {children}
-    </Animated.View>
-  );
-}
-
+// apple stype tab bar function
 function AppleStyleTabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
   const bottomOffset = Math.max(insets.bottom, 10);
@@ -176,7 +139,14 @@ function AppleStyleTabBar({ state, navigation }) {
 
 export default function MainTabs({
   bookings = [],
+  cancelledMap = {},
+  reviewsMap = {},
+  endedShowsMap = {},
   onAddBooking,
+  onCancelBooking,
+  onSaveReview,
+  onMarkShowEnded,
+  onResetDemoData,
   favorites = [],
   onToggleFavorite,
 }) {
@@ -188,46 +158,40 @@ export default function MainTabs({
         lazy: false,
       }}
     >
-      <Tab.Screen name="Home">
-        {(props) => (
-          <SmoothSceneWrapper isFocused={props.navigation.isFocused()}>
-            <HomeScreen {...props} />
-          </SmoothSceneWrapper>
-        )}
-      </Tab.Screen>
+      <Tab.Screen name="Home" component={HomeScreen} />
 
       <Tab.Screen name="Movies">
         {(props) => (
-          <SmoothSceneWrapper isFocused={props.navigation.isFocused()}>
-            <MoviesStack
-              {...props}
-              bookings={bookings}
-              onAddBooking={onAddBooking}
-              favorites={favorites}
-              onToggleFavorite={onToggleFavorite}
-            />
-          </SmoothSceneWrapper>
+          <MoviesStack
+            {...props}
+            bookings={bookings}
+            cancelledMap={cancelledMap}
+            onAddBooking={onAddBooking}
+            onCancelBooking={onCancelBooking}
+            onResetDemoData={onResetDemoData}
+            favorites={favorites}
+            onToggleFavorite={onToggleFavorite}
+          />
         )}
       </Tab.Screen>
 
-      <Tab.Screen name="Theaters">
-        {(props) => (
-          <SmoothSceneWrapper isFocused={props.navigation.isFocused()}>
-            <TheatersScreen {...props} />
-          </SmoothSceneWrapper>
-        )}
-      </Tab.Screen>
+      <Tab.Screen name="Theaters" component={TheatersScreen} />
 
       <Tab.Screen name="MyBookings">
         {(props) => (
-          <SmoothSceneWrapper isFocused={props.navigation.isFocused()}>
-            <MyBookingsScreen
-              {...props}
-              bookings={bookings}
-              favorites={favorites}
-              onToggleFavorite={onToggleFavorite}
-            />
-          </SmoothSceneWrapper>
+          <MyBookingsScreen
+            {...props}
+            bookings={bookings}
+            cancelledMap={cancelledMap}
+            reviewsMap={reviewsMap}
+            endedShowsMap={endedShowsMap}
+            onCancelBooking={onCancelBooking}
+            onSaveReview={onSaveReview}
+            onMarkShowEnded={onMarkShowEnded}
+            onResetDemoData={onResetDemoData}
+            favorites={favorites}
+            onToggleFavorite={onToggleFavorite}
+          />
         )}
       </Tab.Screen>
     </Tab.Navigator>
@@ -235,10 +199,6 @@ export default function MainTabs({
 }
 
 const styles = StyleSheet.create({
-  sceneContainer: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
   wrapper: {
     position: 'absolute',
     left: 0,
@@ -246,6 +206,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 14,
     paddingTop: 6,
+    zIndex: 50,
+    elevation: 20,
   },
   pillContainer: {
     flexDirection: 'row',
