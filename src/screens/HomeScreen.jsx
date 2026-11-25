@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -31,6 +32,9 @@ import CinemaFooter from '../components/CinemaFooter';
 
 const HERO_FALLBACK_URI =
   'https://image.tmdb.org/t/p/w1280/r2J02Z2OpNTctfOSN1Ydgii51I3.jpg';
+
+const INITIAL_VISIBLE_COUNT = 4;
+const LOAD_MORE_STEP = 4;
 
 const DEFAULT_TRAILERS =
   Array.isArray(TRAILERS) && TRAILERS.length > 0
@@ -71,6 +75,32 @@ function buildYoutubeEmbedHtml(videoId) {
   `;
 }
 
+// YouTube-style smooth animated shimmer block
+function ShimmerBlock({ pulseAnim, style }) {
+  const opacity = pulseAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.38, 0.85, 0.38],
+  });
+
+  return <Animated.View style={[styles.shimmerBase, { opacity }, style]} />;
+}
+
+// 2-column MovieCard skeleton matching card width & layout
+function MovieCardSkeleton({ width, pulseAnim }) {
+  const posterHeight = Math.round(width * 1.42);
+
+  return (
+    <View style={[styles.skeletonCard, { width }]}>
+      <ShimmerBlock
+        pulseAnim={pulseAnim}
+        style={[styles.skeletonPoster, { height: posterHeight }]}
+      />
+      <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonTitleLine} />
+      <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonMetaLine} />
+    </View>
+  );
+}
+
 export default function HomeScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const {
@@ -79,11 +109,14 @@ export default function HomeScreen({ navigation }) {
     avatarIcon,
     loginUser,
     updateProfile,
+    logoutUser,
     useDemoUser,
   } = useAuth();
 
   const [movies, setMovies] = useState([]);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const [selectedTrailer, setSelectedTrailer] = useState(DEFAULT_TRAILERS[0]);
@@ -97,9 +130,31 @@ export default function HomeScreen({ navigation }) {
   const [draftEmail, setDraftEmail] = useState('');
   const [draftIcon, setDraftIcon] = useState(avatarIcon || 'person');
 
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  const loadMoreTimerRef = useRef(null);
+
   const horizontalPadding = 16;
   const gap = 12;
   const cardWidth = Math.max((width - horizontalPadding * 2 - gap) / 2, 140);
+
+  // Continuous YouTube-style skeleton shimmer loop
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(shimmerAnim, {
+        toValue: 1,
+        duration: 1250,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+
+    return () => {
+      loop.stop();
+      if (loadMoreTimerRef.current) {
+        clearTimeout(loadMoreTimerRef.current);
+      }
+    };
+  }, [shimmerAnim]);
 
   useEffect(() => {
     setDraftName(user?.name || '');
@@ -118,14 +173,17 @@ export default function HomeScreen({ navigation }) {
       const data = await fetchAllShows();
       const rawList = Array.isArray(data?.shows) ? data.shows : [];
 
-      if (rawList.length > 0) {
-        const normalized = rawList.map(normalizeMovie).filter(Boolean);
-        setMovies(normalized);
-      } else {
-        setMovies(MOVIES.map(normalizeMovie));
-      }
+      const normalizedList =
+        rawList.length > 0
+          ? rawList.map(normalizeMovie).filter(Boolean)
+          : MOVIES.map(normalizeMovie);
+
+      setMovies(normalizedList);
+      setVisibleCount(Math.min(INITIAL_VISIBLE_COUNT, normalizedList.length));
     } catch (err) {
-      setMovies(MOVIES.map(normalizeMovie));
+      const fallbackList = MOVIES.map(normalizeMovie);
+      setMovies(fallbackList);
+      setVisibleCount(Math.min(INITIAL_VISIBLE_COUNT, fallbackList.length));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -135,6 +193,41 @@ export default function HomeScreen({ navigation }) {
   useEffect(() => {
     loadShows(false);
   }, [loadShows]);
+
+  const visibleMovies = useMemo(
+    () => movies.slice(0, visibleCount),
+    [movies, visibleCount]
+  );
+
+  const hasMoreMovies = visibleCount < movies.length;
+
+  const handleLoadMoreMovies = useCallback(() => {
+    if (loading || loadingMore || !hasMoreMovies) return;
+
+    setLoadingMore(true);
+    if (loadMoreTimerRef.current) {
+      clearTimeout(loadMoreTimerRef.current);
+    }
+
+    loadMoreTimerRef.current = setTimeout(() => {
+      setVisibleCount((prev) => Math.min(prev + LOAD_MORE_STEP, movies.length));
+      setLoadingMore(false);
+    }, 260);
+  }, [loading, loadingMore, hasMoreMovies, movies.length]);
+
+  const handleScroll = useCallback(
+    (event) => {
+      if (!hasMoreMovies || loading || loadingMore) return;
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - (layoutMeasurement.height + contentOffset.y);
+
+      if (distanceFromBottom < 260) {
+        handleLoadMoreMovies();
+      }
+    },
+    [hasMoreMovies, loading, loadingMore, handleLoadMoreMovies]
+  );
 
   const featuredMovie = movies[0] || normalizeMovie(MOVIES[0]);
   const heroUri =
@@ -180,6 +273,7 @@ export default function HomeScreen({ navigation }) {
         name: cleanName || 'QuickShow User',
         email: cleanEmail || 'user@quickshow.app',
         avatarIcon: draftIcon,
+        isLoggedIn: true,
       });
     } else if (typeof updateProfile === 'function') {
       updateProfile({
@@ -189,6 +283,14 @@ export default function HomeScreen({ navigation }) {
       });
     }
     setIsEditingProfile(false);
+  };
+
+  const handleLogoutFromPopover = () => {
+    setProfilePopoverVisible(false);
+    setIsEditingProfile(false);
+    if (typeof logoutUser === 'function') {
+      logoutUser();
+    }
   };
 
   const handleSelectTrailer = (item) => {
@@ -217,6 +319,8 @@ export default function HomeScreen({ navigation }) {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={180}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -227,7 +331,7 @@ export default function HomeScreen({ navigation }) {
       >
         {/* Brand Header + Top-Right User Icon */}
         <View style={styles.topBar}>
-          <View>
+          <View style={styles.brandLeftCol}>
             <Text style={styles.brandText}>
               <Text style={styles.brandAccent}>Quick</Text>Show
             </Text>
@@ -254,59 +358,72 @@ export default function HomeScreen({ navigation }) {
             </Text>
             <Ionicons
               name="chevron-down"
-              size={12}
-              color={COLORS.textMuted}
+              size={13}
+              color={COLORS.textSecondary}
+              style={styles.userChevron}
             />
           </TouchableOpacity>
         </View>
 
-        {/* Static Hero Banner */}
-        <View style={styles.heroWrapper}>
-          <ImageBackground
-            source={{ uri: heroUri }}
-            style={styles.heroImage}
-            resizeMode="cover"
-          >
-            <LinearGradient
-              colors={[
-                'rgba(9, 5, 8, 0.22)',
-                'rgba(9, 5, 8, 0.75)',
-                COLORS.bg,
-              ]}
-              style={styles.heroGradient}
+        {/* Hero Banner (YouTube-style Skeleton while loading) */}
+        {loading ? (
+          <View style={styles.heroSkeletonWrap}>
+            <ShimmerBlock pulseAnim={shimmerAnim} style={styles.heroSkeletonBg} />
+            <View style={styles.heroSkeletonContent}>
+              <ShimmerBlock pulseAnim={shimmerAnim} style={styles.heroSkeletonBadge} />
+              <ShimmerBlock pulseAnim={shimmerAnim} style={styles.heroSkeletonTitle} />
+              <ShimmerBlock pulseAnim={shimmerAnim} style={styles.heroSkeletonMeta} />
+              <ShimmerBlock pulseAnim={shimmerAnim} style={styles.heroSkeletonBtn} />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.heroWrapper}>
+            <ImageBackground
+              source={{ uri: heroUri }}
+              style={styles.heroImage}
+              resizeMode="cover"
             >
-              <View style={styles.studioBadge}>
-                <Text style={styles.studioBadgeText}>
-                  {featuredMovie?.language || 'FEATURED'}
-                </Text>
-              </View>
-
-              <Text style={styles.heroTitle} numberOfLines={2}>
-                {featuredMovie?.title || 'QuickShow Cinema'}
-              </Text>
-
-              <Text style={styles.heroMeta} numberOfLines={1}>
-                {featuredMovie?.genre} • {featuredMovie?.year} •{' '}
-                {featuredMovie?.duration}
-              </Text>
-
-              <Text style={styles.heroDesc} numberOfLines={3}>
-                {featuredMovie?.synopsis}
-              </Text>
-
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={goToAllMovies}
-                style={styles.exploreBtn}
+              <LinearGradient
+                colors={[
+                  'rgba(9, 5, 8, 0.22)',
+                  'rgba(9, 5, 8, 0.75)',
+                  COLORS.bg,
+                ]}
+                style={styles.heroGradient}
               >
-                <Text style={styles.exploreBtnText}>Explore Movies</Text>
-                <Ionicons name="arrow-forward" size={16} color={COLORS.white} />
-              </TouchableOpacity>
-            </LinearGradient>
-          </ImageBackground>
-        </View>
+                <View style={styles.studioBadge}>
+                  <Text style={styles.studioBadgeText}>
+                    {featuredMovie?.language || 'FEATURED'}
+                  </Text>
+                </View>
 
-        {/* Now Showing Section */}
+                <Text style={styles.heroTitle} numberOfLines={2}>
+                  {featuredMovie?.title || 'QuickShow Cinema'}
+                </Text>
+
+                <Text style={styles.heroMeta} numberOfLines={1}>
+                  {featuredMovie?.genre} • {featuredMovie?.year} •{' '}
+                  {featuredMovie?.duration}
+                </Text>
+
+                <Text style={styles.heroDesc} numberOfLines={3}>
+                  {featuredMovie?.synopsis}
+                </Text>
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={goToAllMovies}
+                  style={styles.exploreBtn}
+                >
+                  <Text style={styles.exploreBtnText}>Explore Movies</Text>
+                  <Ionicons name="arrow-forward" size={16} color={COLORS.white} />
+                </TouchableOpacity>
+              </LinearGradient>
+            </ImageBackground>
+          </View>
+        )}
+
+        {/* Now Showing Section with YouTube Shimmer Skeleton + Lazy Loading */}
         <View style={styles.section}>
           <SectionHeader
             title="Now Showing"
@@ -315,21 +432,57 @@ export default function HomeScreen({ navigation }) {
           />
 
           {loading ? (
-            <View style={styles.loaderBox}>
-              <ActivityIndicator size="small" color={COLORS.primary} />
-              <Text style={styles.loaderText}>Loading shows...</Text>
-            </View>
-          ) : (
             <View style={styles.grid}>
-              {movies.map((movie) => (
-                <MovieCard
-                  key={movie.id}
-                  movie={movie}
-                  style={{ width: cardWidth }}
-                  onPress={() => openMovieDetails(movie)}
+              {[0, 1, 2, 3].map((idx) => (
+                <MovieCardSkeleton
+                  key={`skel-${idx}`}
+                  width={cardWidth}
+                  pulseAnim={shimmerAnim}
                 />
               ))}
             </View>
+          ) : (
+            <>
+              <View style={styles.grid}>
+                {visibleMovies.map((movie) => (
+                  <MovieCard
+                    key={movie.id}
+                    movie={movie}
+                    style={{ width: cardWidth }}
+                    onPress={() => openMovieDetails(movie)}
+                  />
+                ))}
+              </View>
+
+              {loadingMore ? (
+                <View style={styles.grid}>
+                  {[0, 1].map((idx) => (
+                    <MovieCardSkeleton
+                      key={`lazy-skel-${idx}`}
+                      width={cardWidth}
+                      pulseAnim={shimmerAnim}
+                    />
+                  ))}
+                </View>
+              ) : null}
+
+              {hasMoreMovies && !loadingMore ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleLoadMoreMovies}
+                  style={styles.loadMoreBtn}
+                >
+                  <Text style={styles.loadMoreText}>
+                    Load More Shows ({movies.length - visibleCount} more)
+                  </Text>
+                  <Ionicons
+                    name="chevron-down"
+                    size={15}
+                    color={COLORS.textSecondary}
+                  />
+                </TouchableOpacity>
+              ) : null}
+            </>
           )}
         </View>
 
@@ -563,6 +716,19 @@ export default function HomeScreen({ navigation }) {
                         Use Demo Profile
                       </Text>
                     </TouchableOpacity>
+                  ) : typeof logoutUser === 'function' ? (
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={handleLogoutFromPopover}
+                      style={styles.logoutSmallBtn}
+                    >
+                      <Ionicons
+                        name="log-out-outline"
+                        size={14}
+                        color="#FDA4AF"
+                      />
+                      <Text style={styles.logoutSmallText}>Log Out</Text>
+                    </TouchableOpacity>
                   ) : null}
                 </View>
               ) : (
@@ -665,9 +831,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 10,
     backgroundColor: COLORS.bg,
+  },
+  brandLeftCol: {
+    flex: 1,
+    minWidth: 0,
   },
   brandText: {
     color: COLORS.text,
@@ -686,28 +857,37 @@ const styles = StyleSheet.create({
   userPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    alignSelf: 'flex-start',
+    gap: 5,
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    paddingLeft: 4,
-    paddingRight: 10,
+    paddingLeft: 5,
+    paddingRight: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    maxWidth: 145,
+    maxWidth: 162,
+    overflow: 'hidden',
   },
   userAvatarBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 25,
+    height: 25,
+    borderRadius: 12.5,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   userPillText: {
     color: COLORS.textSecondary,
     fontSize: 12,
     fontWeight: '700',
+    flexShrink: 1,
+    includeFontPadding: false,
+  },
+  userChevron: {
+    flexShrink: 0,
+    marginTop: 1,
   },
   heroWrapper: {
     width: '100%',
@@ -776,22 +956,86 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginTop: 22,
   },
-  loaderBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 24,
+  shimmerBase: {
+    backgroundColor: '#27202A',
+    borderRadius: 8,
   },
-  loaderText: {
-    color: COLORS.textMuted,
-    fontSize: 12.5,
+  heroSkeletonWrap: {
+    width: '100%',
+    minHeight: 320,
+    position: 'relative',
+    justifyContent: 'flex-end',
+  },
+  heroSkeletonBg: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 0,
+  },
+  heroSkeletonContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 22,
+    gap: 10,
+  },
+  heroSkeletonBadge: {
+    width: 82,
+    height: 20,
+    borderRadius: 6,
+  },
+  heroSkeletonTitle: {
+    width: '74%',
+    height: 30,
+    borderRadius: 8,
+  },
+  heroSkeletonMeta: {
+    width: '54%',
+    height: 14,
+    borderRadius: 6,
+  },
+  heroSkeletonBtn: {
+    width: 138,
+    height: 38,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  skeletonCard: {
+    gap: 8,
+  },
+  skeletonPoster: {
+    width: '100%',
+    borderRadius: 12,
+  },
+  skeletonTitleLine: {
+    width: '82%',
+    height: 14,
+    borderRadius: 6,
+  },
+  skeletonMetaLine: {
+    width: '52%',
+    height: 11,
+    borderRadius: 5,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     rowGap: 14,
+    marginTop: 12,
+  },
+  loadMoreBtn: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 999,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  loadMoreText: {
+    color: COLORS.textSecondary,
+    fontSize: 12.5,
+    fontWeight: '700',
   },
   trailerPlayerCard: {
     width: '100%',
@@ -1051,6 +1295,23 @@ const styles = StyleSheet.create({
   },
   restoreDemoText: {
     color: COLORS.textSecondary,
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  logoutSmallBtn: {
+    marginTop: 4,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(244, 63, 94, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(244, 63, 94, 0.35)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  logoutSmallText: {
+    color: '#FDA4AF',
     fontSize: 11.5,
     fontWeight: '700',
   },

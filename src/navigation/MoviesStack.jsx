@@ -9,7 +9,8 @@ import BookingConfirmScreen from '../screens/BookingConfirmScreen';
 const Stack = createNativeStackNavigator();
 
 export default function MoviesStack({
-  bookings,
+  bookings = [],
+  cancelledMap = {},
   onAddBooking,
   favorites = [],
   onToggleFavorite,
@@ -26,13 +27,21 @@ export default function MoviesStack({
       }}
     >
       <Stack.Screen name="MoviesList">
-        {(props) => <MoviesScreen {...props} />}
+        {(props) => (
+          <MoviesScreen
+            {...props}
+            bookings={bookings}
+            cancelledMap={cancelledMap}
+          />
+        )}
       </Stack.Screen>
 
       <Stack.Screen name="MovieDetails">
         {(props) => (
           <MovieDetailsScreen
             {...props}
+            bookings={bookings}
+            cancelledMap={cancelledMap}
             favorites={favorites}
             onToggleFavorite={onToggleFavorite}
           />
@@ -40,12 +49,23 @@ export default function MoviesStack({
       </Stack.Screen>
 
       <Stack.Screen name="SeatSelection">
-        {(props) => <SeatSelectionScreen {...props} />}
+        {(props) => (
+          <SeatSelectionScreen
+            {...props}
+            bookings={bookings}
+            cancelledMap={cancelledMap}
+          />
+        )}
       </Stack.Screen>
 
       <Stack.Screen name="BookingConfirm">
         {(props) => (
-          <BookingConfirmScreen {...props} onAddBooking={onAddBooking} />
+          <BookingConfirmScreen
+            {...props}
+            bookings={bookings}
+            cancelledMap={cancelledMap}
+            onAddBooking={onAddBooking}
+          />
         )}
       </Stack.Screen>
     </Stack.Navigator>

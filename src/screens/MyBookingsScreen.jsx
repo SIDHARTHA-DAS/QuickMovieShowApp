@@ -1,4 +1,10 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+} from 'react';
 import {
   View,
   Text,
@@ -14,6 +20,7 @@ import {
   Clipboard,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -37,6 +44,9 @@ const RATING_LABELS = {
   4: 'Great Movie',
   5: 'Masterpiece!',
 };
+
+const INITIAL_ITEMS_COUNT = 4;
+const LOAD_MORE_STEP = 4;
 
 function formatBookingShowTime(show) {
   if (!show?.showDateTime) return 'Upcoming Show';
@@ -91,7 +101,6 @@ function inferShowEndTimestamp(item) {
     }
   }
 
-  // Try parsing human-readable showTimeLabel e.g. "Fri, Nov 20, 7:30 PM"
   const label = String(item?.showTimeLabel || '');
   const monthMap = {
     jan: 0,
@@ -176,9 +185,7 @@ function copyPassIdToClipboard(passId) {
       Clipboard.setString(value);
       return true;
     }
-  } catch (_) {
-    // Fallback below
-  }
+  } catch (_) {}
 
   try {
     if (
@@ -189,9 +196,7 @@ function copyPassIdToClipboard(passId) {
       navigator.clipboard.writeText(value);
       return true;
     }
-  } catch (_) {
-    // Ignore clipboard failure
-  }
+  } catch (_) {}
 
   return false;
 }
@@ -235,6 +240,51 @@ function buildQrMatrix(seedStr, size = 11) {
     grid.push(row);
   }
   return grid;
+}
+
+function ShimmerBlock({ pulseAnim, style }) {
+  const opacity = pulseAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.35, 0.85, 0.35],
+  });
+
+  return <Animated.View style={[styles.shimmerBase, { opacity }, style]} />;
+}
+
+function BookingCardSkeleton({ pulseAnim }) {
+  return (
+    <View style={styles.skeletonBookingCard}>
+      <View style={styles.skeletonBookingTop}>
+        <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonThumb} />
+        <View style={styles.skeletonMidCol}>
+          <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonBadge} />
+          <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonTitle} />
+          <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonSub} />
+        </View>
+        <View style={styles.skeletonRightCol}>
+          <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonPrice} />
+          <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonSmall} />
+        </View>
+      </View>
+      <View style={styles.skeletonFooterBar}>
+        <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonFooterLeft} />
+        <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonFooterRight} />
+      </View>
+    </View>
+  );
+}
+
+function FavoriteCardSkeleton({ pulseAnim }) {
+  return (
+    <View style={styles.skeletonFavCard}>
+      <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonFavPoster} />
+      <View style={styles.skeletonMidCol}>
+        <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonTitle} />
+        <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonSub} />
+      </View>
+      <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonHeart} />
+    </View>
+  );
 }
 
 function FakeQrCodeBox({ seed }) {
@@ -744,12 +794,40 @@ export default function MyBookingsScreen({
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  const [visibleBookingsCount, setVisibleBookingsCount] =
+    useState(INITIAL_ITEMS_COUNT);
+  const [loadingMoreBookings, setLoadingMoreBookings] = useState(false);
+
+  const [visibleFavsCount, setVisibleFavsCount] =
+    useState(INITIAL_ITEMS_COUNT);
+  const [loadingMoreFavs, setLoadingMoreFavs] = useState(false);
+
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  const lazyTimerRef = useRef(null);
+
   useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(shimmerAnim, {
+        toValue: 1,
+        duration: 1250,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+
     const timer = setInterval(() => {
       setNowMs(Date.now());
     }, 30000);
-    return () => clearInterval(timer);
-  }, []);
+
+    return () => {
+      loop.stop();
+      clearInterval(timer);
+      if (lazyTimerRef.current) {
+        clearTimeout(lazyTimerRef.current);
+        lazyTimerRef.current = null;
+      }
+    };
+  }, [shimmerAnim]);
 
   const loadBookings = useCallback(
     async (isPull = false) => {
@@ -761,7 +839,7 @@ export default function MyBookingsScreen({
         if (res?.success && Array.isArray(res?.bookings)) {
           setApiBookings(res.bookings.map(normalizeBackendBooking));
         }
-      } catch (err) {
+      } catch (_) {
         // Keep local/session bookings smoothly
       } finally {
         setLoading(false);
@@ -844,6 +922,85 @@ export default function MyBookingsScreen({
     }
     return combinedBookings;
   }, [combinedBookings, statusFilter]);
+
+  useEffect(() => {
+    setVisibleBookingsCount(
+      Math.min(INITIAL_ITEMS_COUNT, filteredBookings.length)
+    );
+  }, [statusFilter, activeSubView, filteredBookings.length]);
+
+  useEffect(() => {
+    setVisibleFavsCount(Math.min(INITIAL_ITEMS_COUNT, favorites.length));
+  }, [activeSubView, favorites.length]);
+
+  const visibleBookings = useMemo(
+    () => filteredBookings.slice(0, visibleBookingsCount),
+    [filteredBookings, visibleBookingsCount]
+  );
+
+  const visibleFavorites = useMemo(
+    () => favorites.slice(0, visibleFavsCount),
+    [favorites, visibleFavsCount]
+  );
+
+  const hasMoreBookings = visibleBookingsCount < filteredBookings.length;
+  const hasMoreFavs = visibleFavsCount < favorites.length;
+
+  const handleLoadMoreBookings = useCallback(() => {
+    if (loadingMoreBookings || !hasMoreBookings) return;
+    setLoadingMoreBookings(true);
+    if (lazyTimerRef.current) clearTimeout(lazyTimerRef.current);
+
+    lazyTimerRef.current = setTimeout(() => {
+      setVisibleBookingsCount((prev) =>
+        Math.min(prev + LOAD_MORE_STEP, filteredBookings.length)
+      );
+      setLoadingMoreBookings(false);
+    }, 240);
+  }, [loadingMoreBookings, hasMoreBookings, filteredBookings.length]);
+
+  const handleLoadMoreFavs = useCallback(() => {
+    if (loadingMoreFavs || !hasMoreFavs) return;
+    setLoadingMoreFavs(true);
+    if (lazyTimerRef.current) clearTimeout(lazyTimerRef.current);
+
+    lazyTimerRef.current = setTimeout(() => {
+      setVisibleFavsCount((prev) =>
+        Math.min(prev + LOAD_MORE_STEP, favorites.length)
+      );
+      setLoadingMoreFavs(false);
+    }, 240);
+  }, [loadingMoreFavs, hasMoreFavs, favorites.length]);
+
+  const handleScroll = useCallback(
+    (event) => {
+      const { layoutMeasurement, contentOffset, contentSize } =
+        event.nativeEvent;
+      const distFromBottom =
+        contentSize.height - (layoutMeasurement.height + contentOffset.y);
+
+      if (distFromBottom > 240) return;
+
+      if (activeSubView === 'bookings' && hasMoreBookings && !loadingMoreBookings) {
+        handleLoadMoreBookings();
+      } else if (
+        activeSubView === 'favorites' &&
+        hasMoreFavs &&
+        !loadingMoreFavs
+      ) {
+        handleLoadMoreFavs();
+      }
+    },
+    [
+      activeSubView,
+      hasMoreBookings,
+      loadingMoreBookings,
+      handleLoadMoreBookings,
+      hasMoreFavs,
+      loadingMoreFavs,
+      handleLoadMoreFavs,
+    ]
+  );
 
   const executeTicketCancellation = useCallback(
     (ticket) => {
@@ -941,6 +1098,8 @@ export default function MyBookingsScreen({
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={180}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1126,9 +1285,13 @@ export default function MyBookingsScreen({
             </View>
 
             {loading && combinedBookings.length === 0 ? (
-              <View style={styles.loaderBox}>
-                <ActivityIndicator size="small" color={COLORS.primary} />
-                <Text style={styles.loaderText}>Loading bookings...</Text>
+              <View style={styles.list}>
+                {[0, 1, 2, 3].map((idx) => (
+                  <BookingCardSkeleton
+                    key={`bskel-${idx}`}
+                    pulseAnim={shimmerAnim}
+                  />
+                ))}
               </View>
             ) : filteredBookings.length === 0 ? (
               <Text style={styles.emptyText}>
@@ -1137,203 +1300,234 @@ export default function MyBookingsScreen({
                   : `No ${statusFilter} bookings found.`}
               </Text>
             ) : (
-              <View style={styles.list}>
-                {filteredBookings.map((item) => {
-                  const cancelled = isTicketCancelled(item);
-                  const showEnded = !cancelled && checkHasShowEnded(item);
-                  const submittedReview = reviewsMap?.[String(item.id)] || null;
+              <>
+                <View style={styles.list}>
+                  {visibleBookings.map((item) => {
+                    const cancelled = isTicketCancelled(item);
+                    const showEnded = !cancelled && checkHasShowEnded(item);
+                    const submittedReview =
+                      reviewsMap?.[String(item.id)] || null;
 
-                  const amount = Number(item.amount ?? 0);
-                  const refundAmount =
-                    typeof item.refundAmount === 'number'
-                      ? item.refundAmount
-                      : Math.round(amount * 0.9);
+                    const amount = Number(item.amount ?? 0);
+                    const refundAmount =
+                      typeof item.refundAmount === 'number'
+                        ? item.refundAmount
+                        : Math.round(amount * 0.9);
 
-                  return (
-                    <View
-                      key={item.id}
-                      style={[
-                        styles.ticketCard,
-                        cancelled && styles.ticketCardCancelled,
-                      ]}
-                    >
-                      <TouchableOpacity
-                        activeOpacity={cancelled ? 1 : 0.86}
-                        disabled={cancelled}
-                        onPress={() => {
-                          if (!cancelled) setSelectedPassTicket(item);
-                        }}
-                        style={styles.ticketMainRow}
+                    return (
+                      <View
+                        key={item.id}
+                        style={[
+                          styles.ticketCard,
+                          cancelled && styles.ticketCardCancelled,
+                        ]}
                       >
-                        <Image
-                          source={{ uri: item.poster }}
-                          style={[
-                            styles.poster,
-                            cancelled && styles.dimmedPoster,
-                          ]}
-                          resizeMode="cover"
-                        />
+                        <TouchableOpacity
+                          activeOpacity={cancelled ? 1 : 0.86}
+                          disabled={cancelled}
+                          onPress={() => {
+                            if (!cancelled) setSelectedPassTicket(item);
+                          }}
+                          style={styles.ticketMainRow}
+                        >
+                          <Image
+                            source={{ uri: item.poster }}
+                            style={[
+                              styles.poster,
+                              cancelled && styles.dimmedPoster,
+                            ]}
+                            resizeMode="cover"
+                          />
 
-                        <View style={styles.midCol}>
-                          <View style={styles.statusBadgeRow}>
-                            <View
-                              style={[
-                                styles.statusBadge,
-                                cancelled
-                                  ? styles.statusBadgeCancelled
-                                  : showEnded
-                                    ? styles.statusBadgeCompleted
-                                    : styles.statusBadgeConfirmed,
-                              ]}
-                            >
-                              <Text
+                          <View style={styles.midCol}>
+                            <View style={styles.statusBadgeRow}>
+                              <View
                                 style={[
-                                  styles.statusBadgeText,
+                                  styles.statusBadge,
                                   cancelled
-                                    ? styles.statusTextCancelled
+                                    ? styles.statusBadgeCancelled
                                     : showEnded
-                                      ? styles.statusTextCompleted
-                                      : styles.statusTextConfirmed,
+                                      ? styles.statusBadgeCompleted
+                                      : styles.statusBadgeConfirmed,
                                 ]}
                               >
-                                {cancelled
-                                  ? 'Cancelled'
-                                  : showEnded
-                                    ? 'Show Ended'
-                                    : 'Confirmed'}
-                              </Text>
+                                <Text
+                                  style={[
+                                    styles.statusBadgeText,
+                                    cancelled
+                                      ? styles.statusTextCancelled
+                                      : showEnded
+                                        ? styles.statusTextCompleted
+                                        : styles.statusTextConfirmed,
+                                  ]}
+                                >
+                                  {cancelled
+                                    ? 'Cancelled'
+                                    : showEnded
+                                      ? 'Show Ended'
+                                      : 'Confirmed'}
+                                </Text>
+                              </View>
                             </View>
-                          </View>
 
-                          <Text
-                            style={[
-                              styles.movieTitle,
-                              cancelled && styles.cancelledTitleText,
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {item.movieTitle}
-                          </Text>
-                          <Text style={styles.metaText}>{item.duration}</Text>
-                          <Text style={styles.timeText}>
-                            {item.showTimeLabel}
-                          </Text>
-                        </View>
-
-                        <View style={styles.rightCol}>
-                          <Text style={styles.priceText}>₹{amount}</Text>
-                          <Text style={styles.ticketCount}>
-                            Tickets : {item.seats?.length || 0}
-                          </Text>
-                          <Text style={styles.seatLine} numberOfLines={1}>
-                            Seats : {(item.seats || []).join(', ')}
-                          </Text>
-
-                          {cancelled ? (
-                            <View style={styles.voidBadgeMini}>
-                              <Ionicons
-                                name="ban-outline"
-                                size={11}
-                                color={COLORS.textMuted}
-                              />
-                              <Text style={styles.voidBadgeMiniText}>
-                                QR Removed
-                              </Text>
-                            </View>
-                          ) : (
-                            <View style={styles.qrBadgeMini}>
-                              <Ionicons
-                                name="qr-code-outline"
-                                size={11}
-                                color={COLORS.primary}
-                              />
-                              <Text style={styles.qrBadgeMiniText}>Pass</Text>
-                            </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-
-                      {/* Smart Footer Slot: Cancel Ticket -> Rate & Review -> ★ Rating */}
-                      <View style={styles.cardFooterBar}>
-                        {cancelled ? (
-                          <Text style={styles.refundInfoText}>
-                            Refunded: ₹{refundAmount} (90% of ₹{amount})
-                          </Text>
-                        ) : showEnded ? (
-                          <Text style={styles.refundHintText}>
-                            {submittedReview
-                              ? 'Tap rating to view your review'
-                              : 'Show ended • Share your experience'}
-                          </Text>
-                        ) : (
-                          <View style={styles.upcomingLeftGroup}>
                             <Text
-                              style={styles.refundHintText}
+                              style={[
+                                styles.movieTitle,
+                                cancelled && styles.cancelledTitleText,
+                              ]}
                               numberOfLines={1}
                             >
-                              90% refund (₹{refundAmount})
+                              {item.movieTitle}
                             </Text>
-                            {typeof onMarkShowEnded === 'function' ? (
-                              <TouchableOpacity
-                                activeOpacity={0.75}
-                                onPress={() => onMarkShowEnded(item.id)}
-                                style={styles.simulateEndPill}
-                              >
-                                <Text style={styles.simulateEndText}>
-                                  Simulate End
-                                </Text>
-                              </TouchableOpacity>
-                            ) : null}
+                            <Text style={styles.metaText}>{item.duration}</Text>
+                            <Text style={styles.timeText}>
+                              {item.showTimeLabel}
+                            </Text>
                           </View>
-                        )}
 
-                        {cancelled ? null : !showEnded ? (
-                          <TouchableOpacity
-                            activeOpacity={0.82}
-                            onPress={() => setTicketToCancel(item)}
-                            style={styles.cancelActionBtn}
-                          >
-                            <Ionicons
-                              name="close-circle-outline"
-                              size={13}
-                              color={COLORS.primary}
-                            />
-                            <Text style={styles.cancelActionText}>
-                              Cancel Ticket
+                          <View style={styles.rightCol}>
+                            <Text style={styles.priceText}>₹{amount}</Text>
+                            <Text style={styles.ticketCount}>
+                              Tickets : {item.seats?.length || 0}
                             </Text>
-                          </TouchableOpacity>
-                        ) : submittedReview ? (
-                          <TouchableOpacity
-                            activeOpacity={0.82}
-                            onPress={() => setTicketToViewReview(item)}
-                            style={styles.ratedScorePill}
-                          >
-                            <Ionicons name="star" size={12} color="#FBBF24" />
-                            <Text style={styles.ratedScoreText}>
-                              {submittedReview.rating}/5
+                            <Text style={styles.seatLine} numberOfLines={1}>
+                              Seats : {(item.seats || []).join(', ')}
                             </Text>
-                          </TouchableOpacity>
-                        ) : (
-                          <TouchableOpacity
-                            activeOpacity={0.82}
-                            onPress={() => setTicketToReview(item)}
-                            style={styles.rateReviewBtn}
-                          >
-                            <Ionicons
-                              name="star-outline"
-                              size={13}
-                              color="#FBBF24"
-                            />
-                            <Text style={styles.rateReviewText}>
-                              Rate & Review
+
+                            {cancelled ? (
+                              <View style={styles.voidBadgeMini}>
+                                <Ionicons
+                                  name="ban-outline"
+                                  size={11}
+                                  color={COLORS.textMuted}
+                                />
+                                <Text style={styles.voidBadgeMiniText}>
+                                  QR Removed
+                                </Text>
+                              </View>
+                            ) : (
+                              <View style={styles.qrBadgeMini}>
+                                <Ionicons
+                                  name="qr-code-outline"
+                                  size={11}
+                                  color={COLORS.primary}
+                                />
+                                <Text style={styles.qrBadgeMiniText}>Pass</Text>
+                              </View>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+
+                        <View style={styles.cardFooterBar}>
+                          {cancelled ? (
+                            <Text style={styles.refundInfoText}>
+                              Refunded: ₹{refundAmount} (90% of ₹{amount})
                             </Text>
-                          </TouchableOpacity>
-                        )}
+                          ) : showEnded ? (
+                            <Text style={styles.refundHintText}>
+                              {submittedReview
+                                ? 'Tap rating to view your review'
+                                : 'Show ended • Share your experience'}
+                            </Text>
+                          ) : (
+                            <View style={styles.upcomingLeftGroup}>
+                              <Text
+                                style={styles.refundHintText}
+                                numberOfLines={1}
+                              >
+                                90% refund (₹{refundAmount})
+                              </Text>
+                              {typeof onMarkShowEnded === 'function' ? (
+                                <TouchableOpacity
+                                  activeOpacity={0.75}
+                                  onPress={() => onMarkShowEnded(item.id)}
+                                  style={styles.simulateEndPill}
+                                >
+                                  <Text style={styles.simulateEndText}>
+                                    Simulate End
+                                  </Text>
+                                </TouchableOpacity>
+                              ) : null}
+                            </View>
+                          )}
+
+                          {cancelled ? null : !showEnded ? (
+                            <TouchableOpacity
+                              activeOpacity={0.82}
+                              onPress={() => setTicketToCancel(item)}
+                              style={styles.cancelActionBtn}
+                            >
+                              <Ionicons
+                                name="close-circle-outline"
+                                size={13}
+                                color={COLORS.primary}
+                              />
+                              <Text style={styles.cancelActionText}>
+                                Cancel Ticket
+                              </Text>
+                            </TouchableOpacity>
+                          ) : submittedReview ? (
+                            <TouchableOpacity
+                              activeOpacity={0.82}
+                              onPress={() => setTicketToViewReview(item)}
+                              style={styles.ratedScorePill}
+                            >
+                              <Ionicons name="star" size={12} color="#FBBF24" />
+                              <Text style={styles.ratedScoreText}>
+                                {submittedReview.rating}/5
+                              </Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity
+                              activeOpacity={0.82}
+                              onPress={() => setTicketToReview(item)}
+                              style={styles.rateReviewBtn}
+                            >
+                              <Ionicons
+                                name="star-outline"
+                                size={13}
+                                color="#FBBF24"
+                              />
+                              <Text style={styles.rateReviewText}>
+                                Rate & Review
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
-                    </View>
-                  );
-                })}
-              </View>
+                    );
+                  })}
+                </View>
+
+                {loadingMoreBookings ? (
+                  <View style={styles.list}>
+                    {[0, 1].map((idx) => (
+                      <BookingCardSkeleton
+                        key={`blazy-${idx}`}
+                        pulseAnim={shimmerAnim}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+
+                {hasMoreBookings && !loadingMoreBookings ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={handleLoadMoreBookings}
+                    style={styles.loadMoreBtn}
+                  >
+                    <Text style={styles.loadMoreText}>
+                      Load More Bookings (
+                      {filteredBookings.length - visibleBookingsCount} more)
+                    </Text>
+                    <Ionicons
+                      name="chevron-down"
+                      size={15}
+                      color={COLORS.textSecondary}
+                    />
+                  </TouchableOpacity>
+                ) : null}
+              </>
             )}
           </>
         ) : (
@@ -1353,56 +1547,88 @@ export default function MyBookingsScreen({
                 </Text>
               </View>
             ) : (
-              <View style={styles.list}>
-                {favorites.map((favMovie) => (
-                  <TouchableOpacity
-                    key={favMovie.id}
-                    activeOpacity={0.85}
-                    onPress={() => openFavoriteMovie(favMovie)}
-                    style={styles.favCard}
-                  >
-                    <Image
-                      source={{ uri: favMovie.poster }}
-                      style={styles.favPoster}
-                      resizeMode="cover"
-                    />
+              <>
+                <View style={styles.list}>
+                  {visibleFavorites.map((favMovie) => (
+                    <TouchableOpacity
+                      key={favMovie.id}
+                      activeOpacity={0.85}
+                      onPress={() => openFavoriteMovie(favMovie)}
+                      style={styles.favCard}
+                    >
+                      <Image
+                        source={{ uri: favMovie.poster }}
+                        style={styles.favPoster}
+                        resizeMode="cover"
+                      />
 
-                    <View style={styles.midCol}>
-                      <Text style={styles.movieTitle} numberOfLines={1}>
-                        {favMovie.title}
-                      </Text>
-                      <Text style={styles.metaText} numberOfLines={1}>
-                        {favMovie.year} • {favMovie.genre} • {favMovie.duration}
-                      </Text>
-                      <View style={styles.ratingRow}>
+                      <View style={styles.midCol}>
+                        <Text style={styles.movieTitle} numberOfLines={1}>
+                          {favMovie.title}
+                        </Text>
+                        <Text style={styles.metaText} numberOfLines={1}>
+                          {favMovie.year} • {favMovie.genre} •{' '}
+                          {favMovie.duration}
+                        </Text>
+                        <View style={styles.ratingRow}>
+                          <Ionicons
+                            name="star"
+                            size={12}
+                            color={COLORS.primary}
+                          />
+                          <Text style={styles.ratingText}>
+                            {Number(favMovie.rating || 7.5).toFixed(1)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() =>
+                          typeof onToggleFavorite === 'function' &&
+                          onToggleFavorite(favMovie)
+                        }
+                        style={styles.removeFavBtn}
+                      >
                         <Ionicons
-                          name="star"
-                          size={12}
+                          name="heart"
+                          size={19}
                           color={COLORS.primary}
                         />
-                        <Text style={styles.ratingText}>
-                          {Number(favMovie.rating || 7.5).toFixed(1)}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      onPress={() =>
-                        typeof onToggleFavorite === 'function' &&
-                        onToggleFavorite(favMovie)
-                      }
-                      style={styles.removeFavBtn}
-                    >
-                      <Ionicons
-                        name="heart"
-                        size={19}
-                        color={COLORS.primary}
-                      />
+                      </TouchableOpacity>
                     </TouchableOpacity>
+                  ))}
+                </View>
+
+                {loadingMoreFavs ? (
+                  <View style={styles.list}>
+                    {[0, 1].map((idx) => (
+                      <FavoriteCardSkeleton
+                        key={`flazy-${idx}`}
+                        pulseAnim={shimmerAnim}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+
+                {hasMoreFavs && !loadingMoreFavs ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={handleLoadMoreFavs}
+                    style={styles.loadMoreBtn}
+                  >
+                    <Text style={styles.loadMoreText}>
+                      Load More Favorites (
+                      {favorites.length - visibleFavsCount} more)
+                    </Text>
+                    <Ionicons
+                      name="chevron-down"
+                      size={15}
+                      color={COLORS.textSecondary}
+                    />
                   </TouchableOpacity>
-                ))}
-              </View>
+                ) : null}
+              </>
             )}
           </>
         )}
@@ -1646,16 +1872,116 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontWeight: '700',
   },
-  loaderBox: {
+  shimmerBase: {
+    backgroundColor: '#27202A',
+    borderRadius: 8,
+  },
+  skeletonBookingCard: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: 12,
+    padding: 10,
+  },
+  skeletonBookingTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  skeletonThumb: {
+    width: 78,
+    height: 62,
+    borderRadius: 7,
+  },
+  skeletonMidCol: {
+    flex: 1,
+    gap: 6,
+  },
+  skeletonBadge: {
+    width: 62,
+    height: 14,
+    borderRadius: 5,
+  },
+  skeletonTitle: {
+    width: '78%',
+    height: 14,
+    borderRadius: 6,
+  },
+  skeletonSub: {
+    width: '55%',
+    height: 11,
+    borderRadius: 5,
+  },
+  skeletonRightCol: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  skeletonPrice: {
+    width: 44,
+    height: 16,
+    borderRadius: 6,
+  },
+  skeletonSmall: {
+    width: 58,
+    height: 11,
+    borderRadius: 5,
+  },
+  skeletonFooterBar: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.cardBorder,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  skeletonFooterLeft: {
+    width: 110,
+    height: 12,
+    borderRadius: 5,
+  },
+  skeletonFooterRight: {
+    width: 82,
+    height: 24,
+    borderRadius: 8,
+  },
+  skeletonFavCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: 12,
+    padding: 10,
+    gap: 10,
+  },
+  skeletonFavPoster: {
+    width: 54,
+    height: 72,
+    borderRadius: 8,
+  },
+  skeletonHeart: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  loadMoreBtn: {
+    marginHorizontal: 16,
+    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 24,
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 999,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
-  loaderText: {
-    color: COLORS.textMuted,
+  loadMoreText: {
+    color: COLORS.textSecondary,
     fontSize: 12.5,
+    fontWeight: '700',
   },
   emptyText: {
     color: COLORS.textMuted,

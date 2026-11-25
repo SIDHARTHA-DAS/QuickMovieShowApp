@@ -12,6 +12,17 @@ const apiClient = axios.create({
   },
 });
 
+function normalizeSeatList(list) {
+  if (!Array.isArray(list)) return [];
+  return Array.from(
+    new Set(
+      list
+        .map((seat) => String(seat || '').trim().toUpperCase())
+        .filter(Boolean)
+    )
+  );
+}
+
 export function getTmdbImageUrl(path, size = 'w500') {
   if (!path) return null;
   if (typeof path === 'string' && path.startsWith('http')) {
@@ -32,19 +43,32 @@ export async function fetchShowByMovieId(movieId) {
 }
 
 export async function fetchOccupiedSeats(showId) {
-  const res = await apiClient.get(`/api/booking/seats/${showId}`);
-  return res.data;
+  if (!showId) {
+    return { occupiedSeats: [] };
+  }
+  const res = await apiClient.get(
+    `/api/booking/seats/${encodeURIComponent(String(showId))}`
+  );
+  const data = res.data || {};
+  const rawSeats =
+    data.occupiedSeats || data.bookedSeats || data.seats || [];
+  return {
+    ...data,
+    occupiedSeats: normalizeSeatList(rawSeats),
+  };
 }
 
 export async function createBookingRequest(
   { showId, selectedSeats, amount, movieTitle, showTimeLabel },
   userId
 ) {
+  const cleanSeats = normalizeSeatList(selectedSeats);
   const res = await apiClient.post(
     '/api/booking/create',
     {
       showId,
-      selectedSeats,
+      selectedSeats: cleanSeats,
+      bookedSeats: cleanSeats,
       amount,
       movieTitle,
       showTimeLabel,
@@ -52,7 +76,7 @@ export async function createBookingRequest(
       simulatedPayment: true,
     },
     {
-      headers: userId ? { 'x-user-id': userId } : {},
+      headers: userId ? { 'x-user-id': String(userId) } : {},
     }
   );
   return res.data;
@@ -60,7 +84,7 @@ export async function createBookingRequest(
 
 export async function fetchUserBookings(userId) {
   const res = await apiClient.get('/api/user/bookings', {
-    headers: userId ? { 'x-user-id': userId } : {},
+    headers: userId ? { 'x-user-id': String(userId) } : {},
   });
   return res.data;
 }

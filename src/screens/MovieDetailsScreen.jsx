@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   useWindowDimensions,
-  ActivityIndicator,
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +17,9 @@ import { fetchShowByMovieId } from '../services/api';
 import { normalizeMovie } from '../utils/movieAdapter';
 import SectionHeader from '../components/SectionHeader';
 import MovieCard from '../components/MovieCard';
+
+const RELATED_INITIAL_COUNT = 4;
+const RELATED_LOAD_STEP = 4;
 
 function formatReadableDate(isoDateStr) {
   if (!isoDateStr) return '21 Nov';
@@ -43,6 +45,30 @@ function formatTimeSlot(rawTime) {
   });
 }
 
+function ShimmerBlock({ pulseAnim, style }) {
+  const opacity = pulseAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.38, 0.85, 0.38],
+  });
+
+  return <Animated.View style={[styles.shimmerBase, { opacity }, style]} />;
+}
+
+function MovieCardSkeleton({ width, pulseAnim }) {
+  const posterHeight = Math.round(width * 1.42);
+
+  return (
+    <View style={[styles.skeletonCard, { width }]}>
+      <ShimmerBlock
+        pulseAnim={pulseAnim}
+        style={[styles.skeletonPoster, { height: posterHeight }]}
+      />
+      <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonTitleLine} />
+      <ShimmerBlock pulseAnim={pulseAnim} style={styles.skeletonMetaLine} />
+    </View>
+  );
+}
+
 export default function MovieDetailsScreen({
   route,
   navigation,
@@ -61,16 +87,40 @@ export default function MovieDetailsScreen({
   const [selectedDateIndex, setSelectedDateIndex] = useState(0);
   const [loadingShow, setLoadingShow] = useState(true);
 
+  const [relatedVisibleCount, setRelatedVisibleCount] = useState(
+    RELATED_INITIAL_COUNT
+  );
+  const [loadingMoreRelated, setLoadingMoreRelated] = useState(false);
+
   const [popupText, setPopupText] = useState('');
   const popupOpacity = useRef(new Animated.Value(0)).current;
   const popupTranslate = useRef(new Animated.Value(-16)).current;
   const popupTimer = useRef(null);
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  const relatedTimerRef = useRef(null);
 
   const movieId = params.movieId || fallbackRaw?._id || fallbackRaw?.id;
 
   const isLiked = Array.isArray(favorites)
     ? favorites.some((item) => String(item.id) === String(movie.id))
     : false;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(shimmerAnim, {
+        toValue: 1,
+        duration: 1250,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+
+    return () => {
+      loop.stop();
+      if (popupTimer.current) clearTimeout(popupTimer.current);
+      if (relatedTimerRef.current) clearTimeout(relatedTimerRef.current);
+    };
+  }, [shimmerAnim]);
 
   const triggerFavPopup = (message) => {
     if (popupTimer.current) {
@@ -104,13 +154,8 @@ export default function MovieDetailsScreen({
   };
 
   useEffect(() => {
-    return () => {
-      if (popupTimer.current) clearTimeout(popupTimer.current);
-    };
-  }, []);
-
-  useEffect(() => {
     let active = true;
+    setRelatedVisibleCount(RELATED_INITIAL_COUNT);
 
     async function loadMovieShowDetails() {
       setLoadingShow(true);
@@ -212,9 +257,51 @@ export default function MovieDetailsScreen({
     timings: [{ label: '12:50 PM', showId: null }],
   };
 
-  const cardWidth = (width - 16 * 2 - 12) / 2;
-  const relatedMovies = MOVIES.map(normalizeMovie).filter(
-    (m) => String(m.id) !== String(movie.id)
+  const cardWidth = Math.max((width - 16 * 2 - 12) / 2, 140);
+
+  const relatedMovies = useMemo(
+    () =>
+      MOVIES.map(normalizeMovie).filter(
+        (m) => String(m.id) !== String(movie.id)
+      ),
+    [movie.id]
+  );
+
+  const visibleRelatedMovies = useMemo(
+    () => relatedMovies.slice(0, relatedVisibleCount),
+    [relatedMovies, relatedVisibleCount]
+  );
+
+  const hasMoreRelated = relatedVisibleCount < relatedMovies.length;
+
+  const handleLoadMoreRelated = useCallback(() => {
+    if (loadingMoreRelated || !hasMoreRelated) return;
+    setLoadingMoreRelated(true);
+
+    if (relatedTimerRef.current) {
+      clearTimeout(relatedTimerRef.current);
+    }
+
+    relatedTimerRef.current = setTimeout(() => {
+      setRelatedVisibleCount((prev) =>
+        Math.min(prev + RELATED_LOAD_STEP, relatedMovies.length)
+      );
+      setLoadingMoreRelated(false);
+    }, 240);
+  }, [loadingMoreRelated, hasMoreRelated, relatedMovies.length]);
+
+  const handleScroll = useCallback(
+    (event) => {
+      if (!hasMoreRelated || loadingMoreRelated) return;
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - (layoutMeasurement.height + contentOffset.y);
+
+      if (distanceFromBottom < 220) {
+        handleLoadMoreRelated();
+      }
+    },
+    [hasMoreRelated, loadingMoreRelated, handleLoadMoreRelated]
   );
 
   const handleCycleDate = (delta) => {
@@ -259,6 +346,8 @@ export default function MovieDetailsScreen({
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={180}
       >
         <TouchableOpacity
           style={styles.backRow}
@@ -324,10 +413,7 @@ export default function MovieDetailsScreen({
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={handleHeartPress}
-                style={[
-                  styles.heartBtn,
-                  isLiked && styles.heartBtnActive,
-                ]}
+                style={[styles.heartBtn, isLiked && styles.heartBtnActive]}
               >
                 <Ionicons
                   name={isLiked ? 'heart' : 'heart-outline'}
@@ -366,7 +452,16 @@ export default function MovieDetailsScreen({
             <View>
               <Text style={styles.chooseDateLabel}>Choose Date</Text>
               {loadingShow ? (
-                <ActivityIndicator size="small" color={COLORS.primary} />
+                <View style={styles.dateSkeletonRow}>
+                  <ShimmerBlock
+                    pulseAnim={shimmerAnim}
+                    style={styles.dateSkeletonChip}
+                  />
+                  <ShimmerBlock
+                    pulseAnim={shimmerAnim}
+                    style={styles.dateSkeletonSmall}
+                  />
+                </View>
               ) : (
                 <View style={styles.datePickerRow}>
                   <TouchableOpacity
@@ -412,21 +507,65 @@ export default function MovieDetailsScreen({
 
         <View style={styles.section}>
           <SectionHeader title="You May Also Like" />
-          <View style={styles.grid}>
-            {relatedMovies.map((item) => (
-              <MovieCard
-                key={item.id}
-                movie={item}
-                style={{ width: cardWidth }}
-                onPress={() =>
-                  navigation.push('MovieDetails', {
-                    movieId: item.id,
-                    movie: item,
-                  })
-                }
-              />
-            ))}
-          </View>
+
+          {loadingShow ? (
+            <View style={styles.grid}>
+              {[0, 1, 2, 3].map((idx) => (
+                <MovieCardSkeleton
+                  key={`relskel-${idx}`}
+                  width={cardWidth}
+                  pulseAnim={shimmerAnim}
+                />
+              ))}
+            </View>
+          ) : (
+            <>
+              <View style={styles.grid}>
+                {visibleRelatedMovies.map((item) => (
+                  <MovieCard
+                    key={item.id}
+                    movie={item}
+                    style={{ width: cardWidth }}
+                    onPress={() =>
+                      navigation.push('MovieDetails', {
+                        movieId: item.id,
+                        movie: item,
+                      })
+                    }
+                  />
+                ))}
+              </View>
+
+              {loadingMoreRelated ? (
+                <View style={styles.grid}>
+                  {[0, 1].map((idx) => (
+                    <MovieCardSkeleton
+                      key={`rellazy-${idx}`}
+                      width={cardWidth}
+                      pulseAnim={shimmerAnim}
+                    />
+                  ))}
+                </View>
+              ) : null}
+
+              {hasMoreRelated && !loadingMoreRelated ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleLoadMoreRelated}
+                  style={styles.loadMoreBtn}
+                >
+                  <Text style={styles.loadMoreText}>
+                    More Recommendations ({relatedMovies.length - relatedVisibleCount})
+                  </Text>
+                  <Ionicons
+                    name="chevron-down"
+                    size={15}
+                    color={COLORS.textSecondary}
+                  />
+                </TouchableOpacity>
+              ) : null}
+            </>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -642,6 +781,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  shimmerBase: {
+    backgroundColor: '#27202A',
+    borderRadius: 8,
+  },
+  dateSkeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dateSkeletonChip: {
+    width: 76,
+    height: 30,
+    borderRadius: 8,
+  },
+  dateSkeletonSmall: {
+    width: 48,
+    height: 24,
+    borderRadius: 6,
+  },
+  skeletonCard: {
+    gap: 8,
+  },
+  skeletonPoster: {
+    width: '100%',
+    borderRadius: 12,
+  },
+  skeletonTitleLine: {
+    width: '82%',
+    height: 14,
+    borderRadius: 6,
+  },
+  skeletonMetaLine: {
+    width: '52%',
+    height: 11,
+    borderRadius: 5,
+  },
   bookNowBtn: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 16,
@@ -658,5 +833,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     rowGap: 14,
+    marginTop: 12,
+  },
+  loadMoreBtn: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 999,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  loadMoreText: {
+    color: COLORS.textSecondary,
+    fontSize: 12.5,
+    fontWeight: '700',
   },
 });

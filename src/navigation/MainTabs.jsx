@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
+  Vibration,
+  Platform,
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +18,6 @@ import TheatersScreen from '../screens/TheatersScreen';
 import MyBookingsScreen from '../screens/MyBookingsScreen';
 
 const Tab = createBottomTabNavigator();
-
 
 // tab menu list
 const TAB_CONFIG = {
@@ -42,29 +43,54 @@ const TAB_CONFIG = {
   },
 };
 
+function triggerLightHaptic() {
+  try {
+    // iOS ignores custom ms in Vibration.vibrate() and plays a heavy buzz,
+    // so only run a tiny 4ms pulse on Android.
+    if (Platform.OS === 'android') {
+      Vibration.vibrate(4);
+    }
+  } catch (_) {}
+}
 
-// apple stype tab bar function
+// apple liquid glass style tab bar function
 function AppleStyleTabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
   const bottomOffset = Math.max(insets.bottom, 10);
 
   const [barWidth, setBarWidth] = useState(0);
   const indicatorX = useRef(new Animated.Value(0)).current;
+  const indicatorStretch = useRef(new Animated.Value(1)).current;
   const tabCount = state.routes.length || 4;
   const innerWidth = Math.max(barWidth - 10, 0);
   const tabWidth = tabCount > 0 ? innerWidth / tabCount : 0;
 
   useEffect(() => {
     if (tabWidth > 0) {
-      Animated.spring(indicatorX, {
-        toValue: state.index * tabWidth,
-        damping: 20,
-        stiffness: 230,
-        mass: 0.8,
-        useNativeDriver: true,
-      }).start();
+      Animated.parallel([
+        Animated.spring(indicatorX, {
+          toValue: state.index * tabWidth,
+          damping: 18,
+          stiffness: 220,
+          mass: 0.75,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.timing(indicatorStretch, {
+            toValue: 1.07,
+            duration: 95,
+            useNativeDriver: true,
+          }),
+          Animated.spring(indicatorStretch, {
+            toValue: 1,
+            damping: 16,
+            stiffness: 240,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
     }
-  }, [state.index, tabWidth, indicatorX]);
+  }, [state.index, tabWidth, indicatorX, indicatorStretch]);
 
   return (
     <View
@@ -75,6 +101,11 @@ function AppleStyleTabBar({ state, navigation }) {
         style={styles.pillContainer}
         onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
       >
+        {/* Translucent glass layers & top specular highlight */}
+        <View pointerEvents="none" style={styles.glassTintLayer} />
+        <View pointerEvents="none" style={styles.glassTopSheen} />
+        <View pointerEvents="none" style={styles.glassTopHighlight} />
+
         {tabWidth > 0 ? (
           <Animated.View
             pointerEvents="none"
@@ -82,10 +113,15 @@ function AppleStyleTabBar({ state, navigation }) {
               styles.slidingPill,
               {
                 width: tabWidth,
-                transform: [{ translateX: indicatorX }],
+                transform: [
+                  { translateX: indicatorX },
+                  { scaleX: indicatorStretch },
+                ],
               },
             ]}
-          />
+          >
+            <View style={styles.pillSpecularInner} />
+          </Animated.View>
         ) : null}
 
         {state.routes.map((route, index) => {
@@ -97,6 +133,8 @@ function AppleStyleTabBar({ state, navigation }) {
           };
 
           const onPress = () => {
+            triggerLightHaptic();
+
             const event = navigation.emit({
               type: 'tabPress',
               target: route.key,
@@ -213,17 +251,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(20, 14, 18, 0.96)',
+    backgroundColor: 'rgba(28, 22, 34, 0.78)',
     borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.24)',
     padding: 5,
     position: 'relative',
+    overflow: 'hidden',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
+    shadowOpacity: 0.42,
+    shadowRadius: 20,
     elevation: 12,
+  },
+  glassTintLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  glassTopSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '52%',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  glassTopHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 20,
+    right: 20,
+    height: 1.2,
+    backgroundColor: 'rgba(255, 255, 255, 0.36)',
   },
   slidingPill: {
     position: 'absolute',
@@ -232,6 +291,17 @@ const styles = StyleSheet.create({
     left: 5,
     backgroundColor: COLORS.primary,
     borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    overflow: 'hidden',
+  },
+  pillSpecularInner: {
+    position: 'absolute',
+    top: 0,
+    left: 8,
+    right: 8,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.42)',
   },
   tabItem: {
     flex: 1,
